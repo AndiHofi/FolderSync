@@ -1,11 +1,14 @@
 package ah.foldersync
 
+
 import java.net.Socket
 import java.util.logging.Logger
 import java.nio.file._
 import java.nio.file.attribute._
 import java.io.{ DataInputStream, DataOutputStream, BufferedInputStream }
 import java.util.concurrent.TimeUnit
+import Commands._
+import java.util.concurrent.ConcurrentHashMap
 
 class CommandHandlerThread(socket: Socket) extends Thread {
   @volatile private var stopped: Boolean = false
@@ -14,30 +17,31 @@ class CommandHandlerThread(socket: Socket) extends Thread {
 
   private val in = new DataInputStream(new BufferedInputStream(socket.getInputStream()))
   private val out = new DataOutputStream(socket.getOutputStream())
-  private var pendingResponse: Option[() => Unit] = None
+  private val pendingResponses = new ConcurrentHashMap[Int, () => Unit]
 
   override def run() {
     while (!stopped && !Thread.interrupted()) {
       in.readByte() match {
-        case 0 => lock.synchronized {
+        case Ping() => lock.synchronized {
           out.writeByte(1)
           out.flush()
         }
-        case 1 => //ignore
-        case 3 =>
+        case Pong() => //ignore
+        case IncommingFileList() =>
           lock.synchronized {
             handleFileLists()
           }
-        case 4 => lock.synchronized {
+        case IncommingFiles() => 
+          lock.synchronized {
           lock.synchronized {
             handleFileTransfers()
           }
         }
-        case 5 =>
+        case Response() =>
           lock.synchronized {
-            pendingResponse match {
+            val requestNum = in.readInt()
+            Option(pendingResponses.remove(requestNum)) match {
               case Some(f) =>
-                pendingResponse = None
                 f()
               case None =>
                 logger.severe("Got unexpected response")
@@ -63,7 +67,7 @@ class CommandHandlerThread(socket: Socket) extends Thread {
   }
 
   def readFileInfo(index: Int): FileInfo =
-    FileInfo(Paths.get(in.readUTF()), in.readLong(), in.readLong())
+    FileInfo(in.readUTF(), in.readBoolean, in.readLong(), in.readLong())
 
   def handleFileTransfers() {
     val baseDir = Paths.get(in.readUTF)
@@ -111,5 +115,3 @@ class CommandHandlerThread(socket: Socket) extends Thread {
     for (index <- 1 to count) yield f
   }
 }
-
-case class FileInfo(name: Path, size: Long, lastMofidied: Long)

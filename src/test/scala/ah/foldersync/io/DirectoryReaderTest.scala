@@ -17,59 +17,12 @@ import org.junit.Before
 import org.junit.After
 import java.util.concurrent.atomic.AtomicInteger
 
+import TestSupport._
+
 class DirectoryReaderTest {
-  val testTree = TestDir(createTestRoot.toString) / (
-      TestDir("emptyDir"),
-      TestDir("dir2") / (
-          TestFile("file1", content = "fileContent"),
-          TestFile("aaa")),
-      TestDir("dir3") / (
-          TestFile("file1", content = "fileContent"),
-          TestDir("subDir3.1") / (
-              TestFile("b"),
-              TestFile("a"),
-              TestDir("aa")),
-          TestFile("file2")),
-      TestFile("zzz"),
-      TestFile(".1"),
-      TestDir(".dir4") / (
-          TestFile("inHidden")))
 
-  def writeEntries(testDir: TestDir) = {
-    def we(parent: Path)(e: TestEntry): Unit = e match {
-      case TestDir(path, mt, entries) =>
-        val p = parent.resolve(path)
-        Files.createDirectory(p)
-        entries foreach we(p)
-      case TestFile(name, mt, content) =>
-        val p = parent resolve name
-        Files.write(p, Seq(content), Charset.forName("UTF-8"))
-    }
 
-    testDir match {
-      case TestDir(path, mt, entries) =>
-        val p = Paths.get(path)
-        Files.createDirectory(p)
-        entries foreach we(p)
-    }
-  }
-
-  def cleanupDir(e: TestDir) = {
-    require(e.path startsWith System.getProperty("java.io.tmpdir"))
-    val root = Paths.get(e.path)
-    Files.walkFileTree(root, new SimpleFileVisitor[Path]() {
-      override def visitFile(p: Path, attr: BasicFileAttributes) = {
-        Files.delete(p)
-        FileVisitResult.CONTINUE
-      }
-
-      override def postVisitDirectory(p: Path, e: IOException) = {
-        if (e != null) throw e
-        Files.delete(p)
-        FileVisitResult.CONTINUE
-      }
-    });
-  }
+  val testTree = newTestTree
 
   @Before def createTestDirectoryTree {
     writeEntries(testTree)
@@ -137,24 +90,6 @@ class DirectoryReaderTest {
         val isDir = attr.isDirectory
         (rel.toString, isDir)
     }
-  /*
-   *       TestDir("emptyDir"),
-      TestDir("dir2") / (
-          TestFile("file1", content = "fileContent"),
-          TestFile("aaa")),
-      TestDir("dir3") / (
-          TestFile("file1", content = "fileContent"),
-          TestDir("subDir3.1") / (
-              TestFile("b"),
-              TestFile("a"),
-              TestDir("aa")),
-          TestFile("file2")),
-      TestFile("zzz"),
-      TestFile(".1"),
-      TestDir(".dir4") / (
-          TestFile("inHidden")))
-   * 
-   */
 
   @Test def readDirectoryTree {
     val dirs = DirectoryReader.readDirectory(Paths.get(testTree.path), notHidden)
@@ -162,10 +97,6 @@ class DirectoryReaderTest {
     println(dirs.length)
   }
 
-  def createTestRoot = {
-    Paths.get(System.getProperty("java.io.tmpdir"))
-      .resolve("dirReaderTest" + (math.random * 10000.0).toInt)
-  }
 
   val notHidden = (p: (Path, BasicFileAttributes)) => !(p._1.getFileName.toString startsWith ".")
 }
