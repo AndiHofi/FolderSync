@@ -15,6 +15,7 @@ project/plugins/project/
 # eclipse project files
 .project
 .classpath
+.cache
 
 # gedit file backup
 *~
